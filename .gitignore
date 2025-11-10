@@ -6,3 +6,7 @@ maia/
 TODO
 great.pgn
 backupmodels/
+game.pgn
+stockfish/
+tournament/
+data/*

@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class ChessNet(nn.Module):
-    def __init__(self, num_res_blocks=10, channels=256):
+    def __init__(self, num_res_blocks=5, channels=128):
         super().__init__()
 
         self.input_conv = nn.Conv2d(18, channels, kernel_size=3, padding=1)
