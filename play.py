@@ -12,9 +12,20 @@ from utils.pgn_dataset import encode_board
 ENGINE_PATH = r"C:\Users\rukia\Desktop\mini-rl\maia\lc0.exe"
 MAIA_WEIGHTS = r"C:\Users\rukia\Desktop\mini-rl\maia\maia-1100.pb.gz"
 MODEL_PATH = "chess_model.pt"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    DEVICE = "mps"  
+else:
+    DEVICE = "cpu"
 TEMPERATURE = 0.8
 USE_BFLOAT16 = True
+
+if DEVICE == "mps":
+    ENGINE_PATH = "./maia/lc0"
+    MAIA_WEIGHTS = "./maia/maia-1100.pb.gz"
+else:
+    pass
 
 # Board encoding is shared with training/pretraining and imported from utils.pgn_dataset
 

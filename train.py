@@ -20,7 +20,12 @@ GRAD_ACCUMULATION_STEPS = 4
 CUDA_GRAPH_CAPTURE_BATCH = 64
 
 # --- Setup ---
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    DEVICE = "mps"  
+else:
+    DEVICE = "cpu"
 print(f"Using device: {DEVICE}")
 
 def setup_optimizations():
@@ -171,14 +176,14 @@ def main():
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"🧠 Model parameter count: {total_params:,}")
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4, fused=(DEVICE == "cuda"), foreach=False)
+    optimizer = optim.AdamW(model.parameters(), lr=1e-4, fused=True, foreach=False)
 
     scheduler = optim.lr_scheduler.OneCycleLR(
         optimizer, max_lr=1e-3, epochs=100, steps_per_epoch=200, pct_start=0.1
     )
 
     EPOCHS = 500
-    GAMES_PER_EPOCH = 200  # reduced to avoid OOM
+    GAMES_PER_EPOCH = 20  # reduced to avoid OOM
     total_games = EPOCHS * GAMES_PER_EPOCH
 
     data_gen = AsyncDataGenerator(model, num_workers=ASYNC_WORKERS) if ASYNC_WORKERS > 1 else None

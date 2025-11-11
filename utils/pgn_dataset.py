@@ -109,7 +109,9 @@ def move_to_index(move: chess.Move, board: chess.Board):
     return None
 
 
-def estimate_game_count(pgn_path: str, sample_bytes: int = 8_000_000) -> int | None:
+from typing import Optional
+
+def estimate_game_count(pgn_path: str, sample_bytes: int = 8_000_000) -> Optional[int]:
     """
     Roughly estimate number of games in a large PGN by sampling.
 

@@ -16,14 +16,27 @@ from utils.pgn_dataset import iter_pgn_positions, estimate_game_count
 USE_TORCH_COMPILE = False  # Enable torch.compile()
 USE_FP8 = False            # Enable FP8 training (PyTorch native autocast)
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-DATA_PATH = os.path.join("data", "elite_games.pgn")
+    
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    DEVICE = "mps"  
+else:
+    DEVICE = "cpu"
+
+  
+DATA_PATH = os.path.join("data", "lc0-1.pgn")
+
 
 if DEVICE == "cuda":
     torch.set_float32_matmul_precision("high")
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
+
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = False
+
 
 # ==============================
 # Dataset wrapper for DataLoader
@@ -41,7 +54,7 @@ class PGNDataset(IterableDataset):
 # ==============================
 def pretrain(
     pgn_path: str = DATA_PATH,
-    model_path_out: str = "chess_model-large.pt",
+    model_path_out: str = "chess_model.pt",
     init_model_path: str | None = None,
     max_games: int | None = None,
     epochs: int = 1,
@@ -53,6 +66,12 @@ def pretrain(
     assert os.path.exists(pgn_path), f"PGN file not found: {pgn_path}"
 
     model = load_model(init_model_path, DEVICE)
+
+    # Log total parameter count at startup
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Model parameters: total={total_params:,} | trainable={trainable_params:,}")
+
     model.train()
 
     # Optional torch.compile
@@ -87,26 +106,36 @@ def pretrain(
         print("Could not estimate total games; tqdm will show dynamic count only.")
 
     dataset = PGNDataset(pgn_path, max_games=max_games)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=8,
-        pin_memory=True,
-        prefetch_factor=2,
-    )
+    if DEVICE == "cuda":
+        num_workers = 8
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=True,
+            prefetch_factor=2,
+            persistent_workers=True,
+        )
+    else:
+        # On MPS/CPU, run single-process data loading for robustness.
+        dataloader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            num_workers=0,  # <--- THIS IS THE KEY
+        )
 
     for epoch in range(epochs):
         print(f"\nEpoch {epoch + 1}/{epochs}")
 
-        total_positions = None
+        total_games = None
         if est_games is not None:
             effective_games = est_games if max_games is None else min(est_games, max_games)
-            total_positions = effective_games * 80
+            total_games = effective_games
 
         pbar = tqdm(
-            desc=f"Pretraining positions (epoch {epoch + 1}/{epochs})",
-            unit="pos",
-            total=total_positions,
+            desc=f"Pretraining games (epoch {epoch + 1}/{epochs})",
+            unit="games",
+            total=total_games,
         )
 
         for batch_boards, batch_policy, batch_value in dataloader:
@@ -119,7 +148,8 @@ def pretrain(
                 weight_policy,
                 weight_value,
             )
-            pbar.update(len(batch_boards))
+            # Update progress by estimated games processed (assuming ~80 positions per game)
+            pbar.update(round(len(batch_boards) / 80.0, 2))
             pbar.set_postfix({"loss": f"{loss:.4f}"})
 
         pbar.close()
@@ -150,7 +180,7 @@ def train_batch(
 
     optimizer.zero_grad(set_to_none=True)
 
-    # FP8 / bf16 autocast logic
+    # FP8 / bf16 autocast logic (mirrors the benchmark script)
     if USE_FP8 and DEVICE == "cuda" and hasattr(torch, "float8_e4m3fn"):
         with torch.autocast(device_type="cuda", dtype=torch.float8_e4m3fn):
             log_p, v = model(X)
@@ -158,8 +188,19 @@ def train_batch(
             value_loss = torch.mean((v - target_v) ** 2)
             loss = weight_policy * policy_loss + weight_value * value_loss
     else:
-        autocast_enabled = DEVICE == "cuda" and torch.cuda.is_bf16_supported()
-        with torch.cuda.amp.autocast(enabled=autocast_enabled, dtype=torch.bfloat16):
+        # This is the corrected, device-aware logic
+        if DEVICE == "cuda":
+            autocast_enabled = torch.cuda.is_bf16_supported()
+            ctx = torch.cuda.amp.autocast(enabled=autocast_enabled, dtype=torch.bfloat16)
+        elif DEVICE == "mps":
+            ctx = torch.amp.autocast(device_type="mps", dtype=torch.bfloat16)
+        else: # CPU
+            class DummyCtx:
+                def __enter__(self_inner): return None
+                def __exit__(self_inner, exc_type, exc, tb): return False
+            ctx = DummyCtx()
+
+        with ctx:
             log_p, v = model(X)
             policy_loss = -(target_p * log_p).sum(dim=1).mean()
             value_loss = torch.mean((v - target_v) ** 2)
@@ -177,11 +218,11 @@ def train_batch(
 def parse_args():
     parser = argparse.ArgumentParser(description="Supervised pretraining from PGN.")
     parser.add_argument("--pgn", type=str, default=DATA_PATH, help="Path to PGN file.")
-    parser.add_argument("--init", type=str, default=None, help="Optional initial model checkpoint.")
-    parser.add_argument("--out", type=str, default="chess_model-large.pt", help="Output model path.")
+    parser.add_argument("--init", type=str, default="chess_model.pt", help="Optional initial model checkpoint.")
+    parser.add_argument("--out", type=str, default="chess_model.pt", help="Output model path.")
     parser.add_argument("--max-games", type=int, default=None, help="Limit number of games.")
     parser.add_argument("--epochs", type=int, default=1, help="Number of passes over PGN.")
-    parser.add_argument("--batch-size", type=int, default=8192, help="Batch size.")
+    parser.add_argument("--batch-size", type=int, default=4096, help="Batch size.")
     parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate.")
     parser.add_argument("--weight-policy", type=float, default=1.0, help="Policy loss weight.")
     parser.add_argument("--weight-value", type=float, default=1.0, help="Value loss weight.")

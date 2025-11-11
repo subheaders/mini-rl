@@ -16,10 +16,9 @@ from utils.pgn_dataset import encode_board
 from collections import defaultdict
 
 # === Config ===
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 USE_BFLOAT16 = True
 TEMPERATURE = 0.8
-MODEL_PATH = "chess_model.pt"
+MODEL_PATH = "chess_model-large.pt"
 GAMES_PER_OPPONENT = 50
 THREADS = 5
 
@@ -27,6 +26,21 @@ THREADS = 5
 STOCKFISH_PATH = r"stockfish/stockfish.exe"
 MAIA_PATH = r"C:\Users\rukia\Desktop\mini-rl\maia\lc0.exe"
 MAIA_FOLDER = r"C:\Users\rukia\Desktop\mini-rl\maia"
+
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    DEVICE = "mps"  
+else:
+    DEVICE = "cpu"
+
+if DEVICE == 'mps':
+    STOCKFISH_PATH = "./stockfish/stockfish"
+    MAIA_PATH = './maia/lc0'
+    MAIA_FOLDER = './maia'
+else:
+    pass
+
 
 # === Opponent setups ===
 OPPONENTS = []

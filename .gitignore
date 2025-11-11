@@ -10,3 +10,9 @@ game.pgn
 stockfish/
 tournament/
 data/*
+bak/
+moe_benchmark_pretrain.py 
+moe_model.py
+server-pretrain.py 
+old.pt 
+models_game.pgn
