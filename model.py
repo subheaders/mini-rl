@@ -2,6 +2,7 @@ import torch, torch.nn as nn, torch.nn.functional as F
 
 class ResidualBlock(nn.Module):
     def __init__(self,c): super().__init__(); self.conv1=nn.Conv2d(c,c,3,1,1); self.bn1=nn.BatchNorm2d(c); self.conv2=nn.Conv2d(c,c,3,1,1); self.bn2=nn.BatchNorm2d(c)
+    @torch.compile(fullgraph=True)
     def forward(self,x): r=x; x=F.relu(self.bn1(self.conv1(x))); x=self.bn2(self.conv2(x)); return F.relu(x+r)
 
 class ChessNet(nn.Module):
