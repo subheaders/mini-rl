@@ -25,3 +25,4 @@ archived
 !model.py
 !utils/pgn_dataset.py
 !tests.py
+*.gitignore
