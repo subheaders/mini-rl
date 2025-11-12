@@ -1,28 +1,26 @@
-# chess_model.pt
-*.pt
-__pycache__
-data/data-10m.pgn
-maia/
-TODO
-great.pgn
+# Ignore Python bytecode
+__pycache__/
+
+# Ignore all .pt files recursively
+**/*.pt
+
+# Ignore PGN data
+data/
+*.pgn
+
+# Ignore directories
 backupmodels/
-game.pgn
+maia/
 stockfish/
 tournament/
-data/*
-bak/
-moe_benchmark_pretrain.py 
-moe_model.py
-server-pretrain.py 
-old.pt 
-models_game.pgn
-.gitignore
-download*
-data.py
-mvm.py
-play.py
-tournament.py
-transformer*
+
+# Misc
+TODO
 archived
-games
-.vscode
+.vscode/
+.ds_store
+
+*.py
+!pretrain.py
+!model.py
+!utils/pgn_dataset.py
